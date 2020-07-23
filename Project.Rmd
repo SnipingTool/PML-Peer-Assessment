@@ -1,0 +1,109 @@
+---
+title: 'Practical Machine Learning: Peer Assessment'
+output: 
+      html_document: 
+            keep_md: true
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo=T, warning=F, message=F, cache=T)
+```
+
+
+## Summary
+In this project, we examine weight lifting exercise data collected from various accelerometer
+sensors on the belt, forearm, arm and dumbbell of 6 participants. We use this data to build a model
+with the primary goal being to predict the type of exercise being performed, given the sensory data.
+
+
+## Data Transformation
+### Loading Required Packages
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rattle)
+set.seed(3233)
+```
+
+
+### Reading Training & Testing Data
+```{r}
+trainingOrg <- read.csv("pml-training.csv")
+testingOrg <- read.csv("pml-testing.csv")
+```
+
+
+### Choosing Predictors & Making Subsets
+```{r}
+subNamesTrain <- grep("^(roll|pitch|yaw|total|gyros|accel|magnet|classe)", names(trainingOrg))
+subNamesTest <- grep("^(roll|pitch|yaw|total|gyros|accel|magnet)", names(testingOrg))
+training <- trainingOrg[, subNamesTrain]
+training$classe <- factor(training$classe)
+testing <- testingOrg[, subNamesTest]
+```
+The subsets are made to remove variables in the dataset that do not help in predicting the exercise
+class. These are variables such as mean and standard deviation of the raw sensory data for a single
+person and so they are not as useful as the raw sensory data itself. The **grep()** function in the
+above code gives the indices of the column names that start with any of the words mentioned in the
+function.  
+By making the above subsets, the number of total predictors is now **`r ncol(testing)`**.
+
+
+### Cross Validation
+Splitting the training data into two groups (training & testing) to perform cross validation.
+```{r}
+indTrain <- createDataPartition(training$classe, p = 0.7, list = F)
+trainingCV <- training[indTrain, ]
+testingCV <- training[-indTrain, ]
+dim(trainingCV)
+dim(testingCV)
+```
+
+
+## Creating Models
+Building two models, decision trees and random forest, then choosing the one with higher accuracy.
+
+### 1. Decision Trees
+```{r}
+modelDT <- rpart(factor(classe) ~ ., method = "class", data = trainingCV)
+```
+
+```{r, fig.height=25, fig.width=15}
+fancyRpartPlot(modelDT, sub = "")
+```
+
+```{r}
+cmDT <- confusionMatrix(predict(modelDT, testingCV, type = "class"), testingCV$classe)
+cmDT
+```
+
+As we can see the accuracy of the decision trees model is **`r round(cmDT$overall["Accuracy"], 3)`**
+which is not optimal.
+
+
+### 2. Random Forest
+```{r}
+modelRF <- randomForest(factor(classe) ~ ., method = "class", data = trainingCV)
+plot(modelRF, main = "Error for Random Forest Model")
+```
+
+
+We can see that as the number of trees increases, the error decreases to approximately zero.
+
+
+```{r}
+cmRF <- confusionMatrix(predict(modelRF, testingCV), testingCV$classe)
+cmRF
+```
+The random forest model gives almost perfect **accuracy (`r round(cmRF$overall["Accuracy"], 3)`)**
+on our test set (subset of training set) and so we will choose this model to perform prediction on
+the original test set.  
+The **out of sample error** in this case is **`r 1-round(cmRF$overall["Accuracy"], 3)`** with
+a confidence interval of **(0.0034, 0.0073)** which is very low.
+
+
+## Predicting From Test Data Using Random Forest Model
+```{r}
+predict(modelRF, testing)
+```
